@@ -1,5 +1,7 @@
 Puppet::Type.type(:logical_volume).provide :lvm do
-    desc "Manages LVM logical volumes"
+    desc "Manages LVM logical volumes on Linux"
+
+    confine :kernel => :linux
 
     commands :lvcreate   => 'lvcreate',
              :lvremove   => 'lvremove',
@@ -21,7 +23,10 @@ Puppet::Type.type(:logical_volume).provide :lvm do
     def self.instances
       get_logical_volumes.collect do |logical_volumes_line|
         logical_volumes_properties = get_logical_volume_properties(logical_volumes_line)
-        new(logical_volumes_properties)
+        instance = new(logical_volumes_properties)
+        # Save the volume group in the provider so the type can find it
+        instance.volume_group = logical_volumes_properties[:volume_group]
+        instance
       end
     end
 
@@ -44,22 +49,35 @@ Puppet::Type.type(:logical_volume).provide :lvm do
       output_array = logical_volumes_line.gsub(/\s+/m, ' ').strip.split(" ")
 
       # Assign properties based on headers
-      # Just doing name for now...
-      logical_volumes_properties[:ensure]     = :present
-      logical_volumes_properties[:name]       = output_array[0]
+      logical_volumes_properties[:ensure]       = :present
+      logical_volumes_properties[:name]         = output_array[0]
+      logical_volumes_properties[:volume_group] = output_array[1]
 
       logical_volumes_properties
+    end
+
+    # Just assume that the volume group is correct, we don't support changing
+    # it anyway.
+    attr_writer :volume_group
+
+    def volume_group
+        @resource ? @resource[:volume_group] : @volume_group
     end
 
     def create
         args = []
 
-        args.push('-n', @resource[:name]) unless @resource[:thinpool]
+        args.push('-n', @resource[:name]) unless @resource[:thinpool] == true
+
+        size_option = '--size'
+        if @resource[:thinpool].is_a? String
+          size_option = '--virtualsize'
+        end
 
         if @resource[:size]
-            args.push('--size', @resource[:size])
+            args.push(size_option, @resource[:size])
         elsif @resource[:initial_size]
-            args.push('--size', @resource[:initial_size])
+            args.push(size_option, @resource[:initial_size])
         end
         if @resource[:extents]
             args.push('--extents', @resource[:extents])
@@ -120,7 +138,11 @@ Puppet::Type.type(:logical_volume).provide :lvm do
 
         if @resource[:thinpool]
             args.push('--thin')
-            args << @resource[:volume_group] + "/" + @resource[:name]
+            if @resource[:thinpool].is_a? String
+              args << @resource[:volume_group] + "/" + @resource[:thinpool]
+            else
+              args << @resource[:volume_group] + "/" + @resource[:name]
+            end
         else
             args << @resource[:volume_group]
         end
@@ -137,12 +159,23 @@ Puppet::Type.type(:logical_volume).provide :lvm do
     end
 
     def exists?
-        lvs(@resource[:volume_group]) =~ lvs_pattern
+        begin
+            lvs(@resource[:volume_group]) =~ /#{@resource[:name]}/
+        rescue Puppet::ExecutionFailure
+            # lvs fails if we give it an empty volume group name, as would
+            # happen if we were running `puppet resource`. This should be
+            # interpreted as "The resource does not exist"
+            nil
+        end
     end
 
     def size
         if @resource[:size] =~ /^\d+\.?\d{0,2}([KMGTPE])/i
             unit = $1.downcase
+        else
+            # If we are getting the size initially we don't know what the
+            # units will be, default to GB
+            unit = 'g'
         end
 
         raw = lvs('--noheading', '--unit', unit, path)
@@ -291,9 +324,6 @@ Puppet::Type.type(:logical_volume).provide :lvm do
             end
         end
     end
-
-
-
 
     private
 

@@ -1,3 +1,34 @@
+## Release 1.2.0
+### Summary
+This release is a roll up of minor bugfixes.
+
+### Added
+- The upper bound for the stdlib dependency has been increased to 6.0.0
+- The module mount_core has been added as a dependency after having been removed from the puppet core.
+- Support added for Puppet 5 and 6.
+
+### Bugfixes
+- Test code left over from previous work has been removed.
+- Fix added so that attempts are no longer made to run lvm commands when they are not supported.
+- Rubygem version pinned on travis when ruby version less than 2.3.0.
+
+## Release 1.1.0
+### Summary
+This is a feature release in order to add facts, functions, tasks and plans alongside some smaller bugfixes and additions.
+
+### Added
+- Functions added for onverting to and from bytes.
+- Tasks added for common actions that use types and providors.
+- Plan for one touch expanding, expanded.
+- Support has been added for LVM thin volumes.
+- Facts have been structured.
+- Provider modified to allow `puppet resource` to work with `logical_volumes`.
+- LVM providers have been confined to linux.
+
+### Bugfixes
+- Redundant code removed from facts.
+- Fixed issues that were causing compilation to fail in tests.
+
 ## Release 1.0.1
 ### Summary
 This release is a roll up of minor bugfixes.
